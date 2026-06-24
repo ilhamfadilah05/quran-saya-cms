@@ -2,3 +2,5 @@ node_modules/
 .env
 babu-app-78b8d-firebase-adminsdk-2mx8p-a08a77c7b6.json
 .next
+.DS_Store
+tsconfig.tsbuildinfo

@@ -6,15 +6,27 @@ type CronState = {
   all: string;
   adzan: string;
   reminder: string;
+  winback: string;
 };
 
 export function CronControls() {
-  const [loading, setLoading] = useState<'all' | 'adzan' | 'reminder' | null>(null);
-  const [status, setStatus] = useState<CronState>({ all: '', adzan: '', reminder: '' });
+  const [loading, setLoading] = useState<'all' | 'adzan' | 'reminder' | 'winback' | null>(
+    null
+  );
+  const [status, setStatus] = useState<CronState>({
+    all: '',
+    adzan: '',
+    reminder: '',
+    winback: ''
+  });
 
   async function run(
-    path: '/api/cron/run' | '/api/cron/adzan' | '/api/cron/reminders',
-    key: 'all' | 'adzan' | 'reminder'
+    path:
+      | '/api/cron/run'
+      | '/api/cron/adzan'
+      | '/api/cron/reminders'
+      | '/api/cron/winback?force=1',
+    key: 'all' | 'adzan' | 'reminder' | 'winback'
   ) {
     setLoading(key);
     setStatus((prev) => ({ ...prev, [key]: '' }));
@@ -68,6 +80,18 @@ export function CronControls() {
           {loading === 'reminder' ? 'Running reminder...' : 'Run Cron Reminder Sekarang'}
         </button>
         {status.reminder && <p className="small">{status.reminder}</p>}
+      </div>
+      <div className="grid" style={{ gap: 10 }}>
+        <button
+          type="button"
+          onClick={() => run('/api/cron/winback?force=1', 'winback')}
+          disabled={loading !== null}
+        >
+          {loading === 'winback'
+            ? 'Running win-back...'
+            : 'Run Win-back Sekarang (paksa)'}
+        </button>
+        {status.winback && <p className="small">{status.winback}</p>}
       </div>
     </section>
   );
