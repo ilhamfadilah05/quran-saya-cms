@@ -92,12 +92,6 @@ export async function runAdzanCron(): Promise<CronJobResult> {
 
   const rows = (adzanRows ?? []) as AdzanRow[];
   if (rows.length === 0) {
-    await supabase.from('cron_job_runs').insert({
-      job_name: 'adzan',
-      status: 'success',
-      note: `No schedule for ${hhmm}`
-    });
-
     return { ok: true, job: 'adzan', processed: 0, sent: 0, failed: 0, time: hhmm, timeZone, message: 'No schedule' };
   }
 
@@ -150,12 +144,6 @@ export async function runAdzanCron(): Promise<CronJobResult> {
     }>;
 
   if (prepared.length === 0) {
-    await supabase.from('cron_job_runs').insert({
-      job_name: 'adzan',
-      status: 'success',
-      processed_count: rows.length,
-      note: `No eligible tokens for ${hhmm}`
-    });
 
     return { ok: true, job: 'adzan', processed: rows.length, sent: 0, failed: 0, time: hhmm, timeZone, message: 'No eligible users' };
   }
@@ -225,15 +213,6 @@ export async function runAdzanCron(): Promise<CronJobResult> {
     }
   }
 
-  await supabase.from('cron_job_runs').insert({
-    job_name: 'adzan',
-    status: failed > 0 ? 'partial' : 'success',
-    processed_count: queued.length,
-    sent_count: sent,
-    failed_count: failed,
-    note: `${hhmm} ${timeZone}`
-  });
-
   return { ok: true, job: 'adzan', processed: queued.length, sent, failed, time: hhmm, timeZone };
 }
 
@@ -255,12 +234,6 @@ export async function runReminderCron(): Promise<CronJobResult> {
 
   const reminders = (reminderRows ?? []) as ReminderRow[];
   if (reminders.length === 0) {
-    await supabase.from('cron_job_runs').insert({
-      job_name: 'reminder',
-      status: 'success',
-      note: `No active reminder at ${hhmm}`
-    });
-
     return {
       ok: true,
       job: 'reminder',
@@ -294,12 +267,6 @@ export async function runReminderCron(): Promise<CronJobResult> {
 
   const recipients = (users ?? []) as Array<{ id: string; token_firebase: string }>;
   if (recipients.length === 0) {
-    await supabase.from('cron_job_runs').insert({
-      job_name: 'reminder',
-      status: 'success',
-      processed_count: reminders.length,
-      note: 'No users with active reminder token'
-    });
 
     return {
       ok: true,
@@ -414,14 +381,6 @@ export async function runReminderCron(): Promise<CronJobResult> {
   ] as Array<{ id: number; dedupe_key: string }>;
 
   if (queued.length === 0) {
-    await supabase.from('cron_job_runs').insert({
-      job_name: 'reminder',
-      status: 'success',
-      processed_count: 0,
-      sent_count: 0,
-      failed_count: 0,
-      note: `${hhmm} ${timeZone} (no new/retry work)`
-    });
 
     return {
       ok: true,
@@ -476,15 +435,6 @@ export async function runReminderCron(): Promise<CronJobResult> {
         .eq('id', row.id);
     }
   }
-
-  await supabase.from('cron_job_runs').insert({
-    job_name: 'reminder',
-    status: failed > 0 ? 'partial' : 'success',
-    processed_count: queued.length,
-    sent_count: sent,
-    failed_count: failed,
-    note: `${hhmm} ${timeZone} (new:${insertedRows.length}, retry:${retryItems.length}, skipped:${skippedDuplicate})`
-  });
 
   return {
     ok: true,
@@ -637,11 +587,6 @@ export async function runWinbackCron(
   }>;
 
   if (prepared.length === 0) {
-    await supabase.from('cron_job_runs').insert({
-      job_name: 'winback',
-      status: 'success',
-      note: `${hhmm} ${timeZone} (tidak ada user yang perlu disapa)`
-    });
     return empty('No winback targets');
   }
 
@@ -660,12 +605,6 @@ export async function runWinbackCron(
   const skippedDuplicate = prepared.length - newItems.length;
 
   if (newItems.length === 0) {
-    await supabase.from('cron_job_runs').insert({
-      job_name: 'winback',
-      status: 'success',
-      processed_count: 0,
-      note: `${hhmm} ${timeZone} (semua sudah dikirim hari ini)`
-    });
     return empty('All winback already sent');
   }
 
@@ -723,15 +662,6 @@ export async function runWinbackCron(
         .eq('id', row.id);
     }
   }
-
-  await supabase.from('cron_job_runs').insert({
-    job_name: 'winback',
-    status: failed > 0 ? 'partial' : 'success',
-    processed_count: newItems.length,
-    sent_count: sent,
-    failed_count: failed,
-    note: `${hhmm} ${timeZone} (sent:${sent}, failed:${failed}, skipped:${skippedDuplicate})`
-  });
 
   return {
     ok: true,
