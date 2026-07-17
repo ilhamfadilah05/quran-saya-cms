@@ -1,6 +1,9 @@
 node_modules/
+.next/
 .env
-babu-app-78b8d-firebase-adminsdk-2mx8p-a08a77c7b6.json
-.next
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
 .DS_Store
-tsconfig.tsbuildinfo
+# Firebase service account credentials
+*firebase-adminsdk*.json

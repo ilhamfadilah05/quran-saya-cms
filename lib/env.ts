@@ -1,65 +1,36 @@
-const requiredServerEnv = [
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'FCM_PROJECT_ID',
-  'FCM_CLIENT_EMAIL',
-  'FCM_PRIVATE_KEY',
-  'ADMIN_SESSION_SECRET'
-] as const;
+// Akses & validasi environment variables (server-only).
 
-const requiredSupabaseEnv = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'] as const;
-const requiredFcmEnv = ['FCM_PROJECT_ID', 'FCM_CLIENT_EMAIL', 'FCM_PRIVATE_KEY'] as const;
-const requiredAdminEnv = ['ADMIN_SESSION_SECRET'] as const;
-const requiredCronEnv = ['CRON_SECRET'] as const;
-
-function getMissingEnv(keys: readonly string[]) {
-  return keys.filter((key) => !process.env[key]);
+function req(name: string): string {
+  const v = process.env[name];
+  if (!v || !v.trim()) throw new Error(`Env ${name} belum diisi`);
+  return v.trim();
 }
 
-export function validateServerEnv() {
-  const missing = getMissingEnv(requiredServerEnv);
-  if (missing.length > 0) {
-    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
-  }
+export function getServerEnv() {
+  return {
+    supabaseUrl: req('SUPABASE_URL'),
+    supabaseServiceRoleKey: req('SUPABASE_SERVICE_ROLE_KEY'),
+    fcmProjectId: req('FCM_PROJECT_ID'),
+    fcmClientEmail: req('FCM_CLIENT_EMAIL'),
+    fcmPrivateKey: req('FCM_PRIVATE_KEY').replace(/\\n/g, '\n'),
+    adminSessionSecret: req('ADMIN_SESSION_SECRET'),
+    cronSecret: req('CRON_SECRET'),
+    appTimezone: process.env.APP_TIMEZONE?.trim() || 'Asia/Jakarta',
+    winbackTime: process.env.WINBACK_TIME?.trim() || '19:00',
+    adzanAndroidChannelId:
+      process.env.ADZAN_ANDROID_CHANNEL_ID?.trim() || 'adzan_channel',
+    adzanAndroidSound: process.env.ADZAN_ANDROID_SOUND?.trim() || 'adzan',
+    adzanApnsSound: process.env.ADZAN_APNS_SOUND?.trim() || 'adzan.caf',
+  };
 }
 
 export function validateSupabaseEnv() {
-  const missing = getMissingEnv(requiredSupabaseEnv);
-  if (missing.length > 0) {
-    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
-  }
+  req('SUPABASE_URL');
+  req('SUPABASE_SERVICE_ROLE_KEY');
 }
 
 export function validateFcmEnv() {
-  const missing = getMissingEnv(requiredFcmEnv);
-  if (missing.length > 0) {
-    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
-  }
-}
-
-export function validateAdminEnv() {
-  const missing = getMissingEnv(requiredAdminEnv);
-  if (missing.length > 0) {
-    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
-  }
-}
-
-export function validateCronEnv() {
-  const missing = getMissingEnv(requiredCronEnv);
-  if (missing.length > 0) {
-    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
-  }
-}
-
-export function getServerEnv(key: (typeof requiredServerEnv)[number]) {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing environment variable: ${key}`);
-  }
-
-  if (key === 'FCM_PRIVATE_KEY') {
-    return value.replace(/\\n/g, '\n');
-  }
-
-  return value;
+  req('FCM_PROJECT_ID');
+  req('FCM_CLIENT_EMAIL');
+  req('FCM_PRIVATE_KEY');
 }

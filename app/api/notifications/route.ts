@@ -1,126 +1,90 @@
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { sendPushNotification } from '@/lib/fcm';
-import { getSupabaseServerClient } from '@/lib/supabase';
-import { getAdminSession } from '@/lib/admin-session';
+import { getAdminSession } from '@/lib/cms-auth';
 import { validateFcmEnv, validateSupabaseEnv } from '@/lib/env';
-
-const payloadSchema = z.object({
-  title: z.string().min(1),
-  body: z.string().min(1),
-  prayerName: z.string().min(1),
-  city: z.string().min(1),
-  timezone: z.string().min(1),
-  data: z.record(z.string()).optional()
-});
-
-function isAdzanPrayerName(value: string) {
-  const key = value.trim().toLowerCase();
-  return ['subuh', 'fajr', 'dzuhur', 'dhuhr', 'zuhur', 'ashar', 'asr', 'maghrib', 'isya', 'isha'].includes(key);
-}
+import { getSupabaseServerClient } from '@/lib/supabase';
+import {
+  fetchSegmentUsers,
+  describeSegment,
+  SegmentFilter,
+} from '@/lib/segments';
+import { sendPushNotification } from '@/lib/fcm';
 
 export async function POST(request: Request) {
+  const session = await getAdminSession();
+  if (!session) {
+    return NextResponse.json(
+      { ok: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
-    const session = await getAdminSession();
-    if (!session) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     validateSupabaseEnv();
-    validateFcmEnv();
-    const payload = payloadSchema.parse(await request.json());
+    const payload = (await request.json()) as {
+      title?: string;
+      body?: string;
+      filter?: SegmentFilter;
+      countOnly?: boolean;
+    };
+    const filter = payload.filter ?? {};
+    const users = await fetchSegmentUsers(filter);
 
-    const supabase = getSupabaseServerClient();
-    const { data: userRows, error: tokenError } = await supabase
-      .from('users')
-      .select('id, token_firebase')
-      .not('token_firebase', 'is', null)
-      .neq('token_firebase', '');
-
-    if (tokenError) {
-      return NextResponse.json({ ok: false, error: tokenError.message }, { status: 500 });
+    if (payload.countOnly) {
+      return NextResponse.json({
+        ok: true,
+        count: users.length,
+        segment: describeSegment(filter),
+      });
     }
 
-    const recipients = (userRows ?? []) as Array<{ id: string; token_firebase: string }>;
-    if (recipients.length === 0) {
+    if (!payload.title || !payload.body) {
       return NextResponse.json(
-        {
-          ok: true,
-          sent: 0,
-          failed: 0,
-          targeted: 0,
-          warning: 'Tidak ada user dengan token_firebase aktif.'
-        },
-        { status: 200 }
+        { ok: false, error: 'Judul & isi wajib diisi' },
+        { status: 400 }
       );
     }
+    validateFcmEnv();
 
-    const tokenToUserId = new Map(recipients.map((recipient) => [recipient.token_firebase, recipient.id]));
-    const useAdzanSound = isAdzanPrayerName(payload.prayerName);
+    const supabase = getSupabaseServerClient();
+    let sent = 0;
+    let failed = 0;
+    const logRows: Record<string, unknown>[] = [];
+    const now = new Date().toISOString();
 
-    const sendResult = await sendPushNotification({
-      tokens: recipients.map((recipient) => recipient.token_firebase),
-      title: payload.title,
-      body: payload.body,
-      ...(useAdzanSound
-        ? {
-            androidChannelId: process.env.ADZAN_ANDROID_CHANNEL_ID ?? 'adzan_channel',
-            androidSound: process.env.ADZAN_ANDROID_SOUND ?? 'adzan',
-            apnsSound: process.env.ADZAN_APNS_SOUND ?? 'adzan.caf'
-          }
-        : {}),
-      data: {
-        type: 'manual',
-        prayer_name: payload.prayerName,
-        city: payload.city,
-        timezone: payload.timezone,
-        ...(payload.data ?? {})
-      }
-    });
-
-    const logs = sendResult.results
-      .map((result) => {
-        const userId = tokenToUserId.get(result.token);
-        if (!userId) return null;
-
-        return {
-          user_id: userId,
-          source_type: 'manual',
-          category: payload.prayerName.toLowerCase(),
-          title: payload.title,
-          body: payload.body,
-          status: result.ok ? 'sent' : 'failed',
-          error_message: result.ok ? null : result.error ?? 'Unknown error',
-          scheduled_time: null,
-          metadata: {
-            city: payload.city,
-            timezone: payload.timezone,
-            trigger_by: session.email,
-            custom_data: payload.data ?? {}
-          },
-          sent_at: result.ok ? new Date().toISOString() : null
-        };
-      })
-      .filter(Boolean);
-
-    if (logs.length > 0) {
-      await supabase.from('notification_logs').insert(logs);
+    for (const u of users) {
+      const res = await sendPushNotification({
+        tokens: [u.token_firebase],
+        title: payload.title,
+        body: payload.body,
+        data: { type: 'manual' },
+      });
+      const ok = res.results[0]?.ok ?? false;
+      if (ok) sent += 1;
+      else failed += 1;
+      logRows.push({
+        user_id: u.id,
+        source_type: 'manual',
+        category: 'broadcast',
+        title: payload.title,
+        body: payload.body,
+        status: ok ? 'sent' : 'failed',
+        error_message: ok ? null : res.results[0]?.error ?? 'error',
+        sent_at: ok ? now : null,
+        metadata: { segment: describeSegment(filter), by: session.email },
+      });
     }
 
+    for (let i = 0; i < logRows.length; i += 500) {
+      await supabase
+        .from('notification_logs')
+        .insert(logRows.slice(i, i + 500));
+    }
+
+    return NextResponse.json({ ok: true, total: users.length, sent, failed });
+  } catch (e) {
     return NextResponse.json(
-      {
-        ok: true,
-        sent: sendResult.sent,
-        failed: sendResult.failed,
-        targeted: recipients.length
-      },
-      { status: 200 }
+      { ok: false, error: (e as Error).message },
+      { status: 500 }
     );
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ ok: false, error: error.issues }, { status: 400 });
-    }
-
-    return NextResponse.json({ ok: false, error: (error as Error).message }, { status: 500 });
   }
 }

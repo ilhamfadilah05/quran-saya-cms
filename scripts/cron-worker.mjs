@@ -1,60 +1,47 @@
-const baseUrl = process.env.CRON_BASE_URL ?? 'http://localhost:3000';
-const cronSecret = process.env.CRON_SECRET;
-const intervalSeconds = Number(process.env.CRON_INTERVAL_SECONDS ?? '60');
-const runOnStart = process.env.CRON_RUN_ON_START === 'true';
+// Worker cron sederhana: memanggil /api/cron/run pada interval tetap.
+// Jalankan: npm run cron:worker  (butuh CRON_BASE_URL & CRON_SECRET di env)
 
-if (!cronSecret) {
-  console.error('Missing CRON_SECRET in environment.');
+import { readFileSync } from 'node:fs';
+
+// Muat .env manual (tanpa dependency).
+try {
+  const raw = readFileSync(new URL('../.env', import.meta.url), 'utf8');
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  }
+} catch {
+  // .env opsional; env bisa datang dari shell.
+}
+
+const BASE = process.env.CRON_BASE_URL || 'http://localhost:3000';
+const SECRET = process.env.CRON_SECRET;
+const INTERVAL = Number(process.env.CRON_INTERVAL_SECONDS || '60') * 1000;
+const RUN_ON_START = process.env.CRON_RUN_ON_START === 'true';
+
+if (!SECRET) {
+  console.error('[cron-worker] CRON_SECRET belum diisi. Berhenti.');
   process.exit(1);
 }
 
-if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
-  console.error(`Invalid CRON_INTERVAL_SECONDS: ${process.env.CRON_INTERVAL_SECONDS}`);
-  process.exit(1);
-}
-
-const endpoint = `${baseUrl.replace(/\/$/, '')}/api/cron/run`;
-
-async function runCron() {
-  const startedAt = new Date();
+async function tick() {
   try {
-    const response = await fetch(endpoint, {
+    const res = await fetch(`${BASE}/api/cron/run`, {
       method: 'POST',
-      headers: {
-        'x-cron-secret': cronSecret,
-        'content-type': 'application/json'
-      }
+      headers: { 'x-cron-secret': SECRET },
     });
-
-    const text = await response.text();
-    let payload;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      payload = { raw: text };
-    }
-
-    const durationMs = Date.now() - startedAt.getTime();
-    if (!response.ok) {
-      console.error(`[${new Date().toISOString()}] cron/run failed (${response.status}) in ${durationMs}ms`, payload);
-      return;
-    }
-
-    console.log(`[${new Date().toISOString()}] cron/run success in ${durationMs}ms`, payload);
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] cron/run error`, error);
+    const json = await res.json();
+    const t = json.total ?? {};
+    console.log(
+      `[cron-worker] ${new Date().toISOString()} ok=${json.ok} sent=${t.sent ?? 0} failed=${t.failed ?? 0}`
+    );
+  } catch (e) {
+    console.error('[cron-worker] gagal:', e.message);
   }
 }
 
-console.log('Cron worker started.');
-console.log(`- Endpoint: ${endpoint}`);
-console.log(`- Interval: ${intervalSeconds}s`);
-console.log(`- Run on start: ${runOnStart ? 'yes' : 'no'}`);
-
-if (runOnStart) {
-  void runCron();
-}
-
-setInterval(() => {
-  void runCron();
-}, intervalSeconds * 1000);
+console.log(`[cron-worker] mulai. target=${BASE} interval=${INTERVAL / 1000}s`);
+if (RUN_ON_START) tick();
+setInterval(tick, INTERVAL);
