@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { canAccessCronRoute } from '@/lib/cms-auth';
 import { validateFcmEnv, validateSupabaseEnv } from '@/lib/env';
 import { runAdzanCron, runReminderCron, runWinbackCron } from '@/lib/cron-jobs';
-import { runAdzanCron, runReminderCron, runWinbackCron } from '@/lib/cron-jobs';
 
 export async function POST(request: Request) {
   if (!(await canAccessCronRoute(request))) {
@@ -19,7 +18,6 @@ export async function POST(request: Request) {
       run_every: '1 minute',
       adzan,
       reminder,
-      winback,
       winback,
       total: {
         processed: adzan.processed + reminder.processed + winback.processed,
